@@ -1,0 +1,199 @@
+__includes [
+  "utilities.nls"
+]
+
+extensions [
+  table
+]
+
+;; LocMax implementation
+
+to-report locmax-range-default
+  let negative [-1 0]
+  let neutral [0 0]
+  let positive [0 1]
+  report (list negative neutral positive)
+end
+
+to-report locmax [attk supp expl]
+  let max-attk -1
+  let max-supp -1
+  let attackers get-attackers expl attk
+  let supporters get-supporters expl supp
+  if not empty? attackers [
+    set max-attk max (map [x -> locmax attk supp x] attackers)
+  ]
+  if not empty? supporters [
+    set max-supp max (map [x -> locmax attk supp x] supporters)
+  ]
+  report (max-supp - max-attk) / 2
+end
+
+;; LocSum implementation
+
+to-report locsum-range-default
+  let negative [-1 0]
+  let neutral [0 0]
+  let positive [0 1]
+  report (list negative neutral positive)
+end
+
+to-report locsum [attk supp expl] ;;TODO: testing
+  let sum-attk 0
+  let sum-supp 0
+  let attackers get-attackers expl attk
+  let supporters get-supporters expl supp
+  if not empty? attackers [
+    set sum-attk sum (map [x -> h-transform (locsum attk supp x)] attackers)
+  ]
+  if not empty? supporters [
+    set sum-supp sum (map [x -> h-transform (locsum attk supp x)] supporters)
+  ]
+  report (1 / (1 + sum-attk)) - (1 / (1 + sum-supp))
+end
+
+to-report h-transform [val]
+  report (val + 1) / 2
+end
+
+;; QuAD implementation
+
+to-report quad-range-default
+  let negative [0 0.5]
+  let neutral [0.5 0.5]
+  let positive [0.5 1]
+  report (list negative neutral positive)
+end
+
+to-report quad [attk supp bs expl]
+  let bias table:get bs expl
+  let attackers get-attackers expl attk
+  let supporters get-supporters expl supp
+  let seq-att map [x -> quad attk supp bs x] attackers
+  let seq-supp map [x -> quad attk supp bs x] supporters
+  report g-func bias (Fa bias seq-att) (Fs bias seq-supp)
+end
+
+to-report Fa [v0 seq]
+  let w-seq filter [x -> x != 0] seq
+  let w-len length w-seq
+  (ifelse
+    w-len = 0 [report false]
+    w-len = 1 [report base-func-a v0 (first w-seq)]
+    ;;else
+    [report base-func-a (Fa v0 (but-last w-seq)) (last w-seq)]
+  )
+end
+
+to-report Fs [v0 seq]
+  let w-seq filter [x -> x != 0] seq
+  let w-len length w-seq
+  (ifelse
+    w-len = 0 [report false]
+    w-len = 1 [report base-func-s v0 (first w-seq)]
+    ;;else
+    [report base-func-s (Fs v0 (but-last w-seq)) (last w-seq)]
+  )
+end
+
+to-report g-func [v0 va vs]
+  (ifelse
+    vs = false and va != false [report va]
+    vs != false and va = false [report vs]
+    vs = false and va = false [report v0]
+    ;;else
+    [report (va + vs) / 2]
+  )
+end
+
+to-report base-func-a [v0 v]
+  report v0 * (1 - v)
+end
+
+to-report base-func-s [v0 v]
+  report v0 + v - v0 * v
+end
+
+;; DF-QuAD implementation
+
+to-report dfquad-range-default
+  let negative [0 0.5]
+  let neutral [0.5 0.5]
+  let positive [0.5 1]
+  report (list negative neutral positive)
+end
+
+to-report dfquad [attk supp bs expl]
+  let attackers get-attackers expl attk
+  let supporters get-supporters expl supp
+  let seq-att map [x -> dfquad attk supp bs x] attackers
+  let seq-supp map [x -> dfquad attk supp bs x] supporters
+  report comb-func (table:get bs expl) (aggr-func seq-att) (aggr-func seq-supp)
+end
+
+to-report comb-func [v0 va vs]
+  ifelse va = vs
+    [report v0]
+    [report (v0 + (0.5 + (vs - va) / (2 * abs (vs - va)) - v0) * abs (vs - va))]
+end
+
+to-report base-func [v1 v2]
+  report (v1 + v2 - v1 * v2)
+end
+
+to-report aggr-func [seq]
+  let seq-len length seq
+  (ifelse
+    seq-len = 0 [report 0]
+    seq-len = 1 [report first seq]
+    seq-len = 2 [report base-func (item 0 seq) (item 1 seq)]
+    ;; else
+    [report base-func (aggr-func butlast seq) (last seq)]
+  )
+end
+
+;; Restricted Euler-based semantics implementation
+
+to-report euler-range-default 
+  let negative [0 0.5]
+  let neutral [0.5 0.5]
+  let positive [0.5 1]
+  report (list negative neutral positive)
+end
+
+to-report euler [attk supp bs expl] ;; TODO: testing
+  let bias table:get bs expl
+  let attackers get-attackers expl attk
+  let supporters get-supporters expl supp
+  let e-score (sum (map [x -> euler attk supp bs x] supporters)) - (sum (map [x -> euler attk supp bs x] attackers))
+  report 1 - ((1 - bias * bias) / (1 + bias * (exp e-score)))
+end
+
+;; Quadratic energy model implementation (convergence guaranteed in acyclic graphs)
+
+to-report qem-range-default 
+  let negative [0 0.5]
+  let neutral [0.5 0.5]
+  let positive [0.5 1]
+  report (list negative neutral positive)
+end
+
+to-report qem [attk supp bs expl]
+  let attackers get-attackers expl attk
+  let supporters get-supporters expl supp
+  let base-strength table:get bs expl
+  let sum-supp sum (map [x -> qem attk supp bs x] supporters)
+  let sum-attk sum (map [x -> qem attk supp bs x] attackers)
+  let energy sum-supp - sum-attk
+  report qem-strength base-strength energy
+end
+
+to-report qem-strength [bs energy]
+  report bs + ((1 - bs) * qem-impact energy) - (bs * qem-impact (-1 * energy))
+end
+
+to-report qem-impact [val]
+  let max-val max (list val 0)
+  let max-val-sqrd (max-val * max-val)
+  report max-val-sqrd / (1 + max-val-sqrd)
+end

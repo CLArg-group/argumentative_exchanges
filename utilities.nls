@@ -1,0 +1,64 @@
+extensions [
+  py
+]
+
+;; returns a list of elements in LIST1 that are not in LIST2
+to-report difference [list1 list2]
+  report filter [x -> member? x list2 = false] list1
+end
+
+;; returns if all values in the list LIST1 is identical
+to-report all-identical? [list1]
+  ifelse empty? list1 [
+    report true
+  ] [
+    let val item 0 list1
+    report empty? filter [x -> x != val] list1
+  ]
+end
+
+;; returns a list of attackers in the ATTK list that attack the target TARGET
+to-report get-attackers [target attk]
+  report map [x -> first x] (filter [x -> last x = target] attk)
+end
+
+;; returns a list of supporters in the SUPP list that support the target TARGET
+to-report get-supporters [target supp]
+  report map [x -> first x] (filter [x -> last x = target] supp)
+end
+
+;; generates a random number within the range [MIN-VAL, MAX-VAL]
+to-report generate-random-float [min-val max-val]
+  let rand random-float 1
+  report scale-val rand min-val max-val
+end
+
+;; scales the number VAL to the range [MIN-VAL, MAX-VAL]
+to-report scale-val [val min-val max-val]
+  report val * (max-val - min-val) + min-val
+end
+
+;; generates a random number from the normal distribution with mean MEAN-VAL 
+;; within the range [MIN-VAL, MAX-VAL]
+to-report generate-random-norm [mean-val min-val max-val]
+  let std (min list (mean-val - min-val) (max-val - mean-val)) / 3
+  let result random-normal mean-val std
+  while [result < min-val or result > max-val] [
+    set result random-normal mean-val std
+  ]
+  report result
+end
+
+;; randomly returns either true or false, with SUCCESS-PER% of the times
+;; returning true
+to-report success-or-fail? [success-per] 
+  let score random-float 1
+  report score >= success-per
+end
+
+;; bounds the value VALUE to the range [MIN-VAL, MAX-VAL] by truncating
+to-report bounded [value min-val max-val]
+  if value < min-val [report min-val]
+  if value > max-val [report max-val]
+  report value
+end

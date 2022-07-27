@@ -1,0 +1,5 @@
+# Remove all the files in the .vscode folder
+.vscode/*
+
+# Remove DS_Store files recursively
+**/.DS_Store

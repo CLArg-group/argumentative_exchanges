@@ -1,0 +1,160 @@
+__includes [
+  "strength_evaluation_algorithms.nls"
+]
+
+;; Generates a Universal BAF around the explanandum EXPL with T-SIZE number of 
+;; arguments, each argument having DEGREE number of children 
+to-report gen-ubaf [t-size degree expl]
+  let t-edges []
+  let t-nodes (lput expl [])
+  let curr-t-size 1
+  let nodes (lput expl [])
+  let curr-layer 1
+  let new-node "a"
+
+  while [curr-t-size + (get-n-children degree curr-layer) <= t-size] [
+    let n-children (get-n-children degree curr-layer)
+    let curr-node (first t-nodes)
+    set t-nodes but-first t-nodes
+    foreach range n-children [ i ->
+      set t-nodes (lput new-node t-nodes)
+      set t-edges (lput (list new-node curr-node) t-edges)
+      
+      ;; randomly add another edge to the new node to enable multiple paths
+      if (curr-layer > 1) and (success-or-fail? 0.5) [
+        let another-node one-of (remove curr-node nodes)
+        set t-edges (lput (list new-node another-node) t-edges)
+      ]
+
+      set nodes (lput new-node nodes)
+      set new-node (next-node new-node expl)
+    ]
+    set curr-t-size (curr-t-size + n-children)
+    if next-layer? curr-t-size degree curr-layer [
+      set curr-layer (curr-layer + 1)
+    ]
+  ]
+
+  ;; fills the remaining nodes in the last layer
+  let curr-node (first t-nodes)
+  set t-nodes but-first t-nodes
+  foreach range (t-size - curr-t-size) [ i ->
+    set t-edges (lput (list new-node curr-node) t-edges)
+    if (curr-layer > 1) and (success-or-fail? 0.5) [
+      let another-node one-of (remove curr-node nodes)
+      set t-edges (lput (list new-node another-node) t-edges)
+    ]
+    set nodes (lput new-node nodes)
+    set new-node (next-node new-node expl)
+  ]
+  report t-edges
+end
+
+;; reports the expected number of children for each argument in layer LAYER 
+;; when the arguments in first layer having T-NARY children
+to-report get-n-children [t-nary layer]
+  report t-nary
+  
+  ; Original code for reducing the number of children in subsequent layers
+  ;let n-children ceiling (t-nary / (2 ^ (layer - 1)))
+  ;ifelse n-children > 0 [
+  ;  report n-children
+  ;] [
+  ;  report 1
+  ;]
+end
+
+;; returns the next node label in the tree given current node label CURR and the
+;; explanandum EXPL. In the order of a->b->c->...->aa->ab->...->aaa->...
+to-report next-node [curr expl]
+  let new-node ""
+  let len length curr
+  let char first curr
+  if char = "z" [
+    set len len + 1
+  ]
+  let new-char item ((position char alphabets + 1) mod (length alphabets)) alphabets
+  foreach range len [ x ->
+    set new-node (word new-node new-char)
+  ]
+  ifelse new-node = expl [
+    report next-node new-node expl
+  ] [
+    report new-node
+  ]
+end
+
+;; returns true if the T-NARY UBAF with current size T-SIZE has moved to the 
+;; next layer of the current layer LAYER, false if otherwise
+to-report next-layer? [t-size t-nary layer]
+  let threshold 0
+  let curr-layer-size 1
+  foreach range (layer + 1) [ i ->    
+    set threshold (threshold + curr-layer-size)
+    set curr-layer-size (curr-layer-size * (get-n-children t-nary (i + 1)))
+  ]
+  report t-size >= threshold
+end
+
+to-report alphabets
+  report "abcdefghijklmnopqrstuvwxyz"
+end
+
+;; randomly classify ATTK-PERCENTAGE% of the edges EDGES as attacks and 
+;; others as supports
+to-report classify-edges [edges attk-percentage]
+  let attk-size floor (length edges * attk-percentage)
+  let attks n-of attk-size edges
+  let supps difference edges attks
+  set attks map [x -> (list x true)] attks
+  set supps map [x -> (list x false)] supps
+  report sentence attks supps
+end
+
+;; create a random BAF around explanandum EXPL using the edges UBAF-EDGES with
+;; the goal of having GOAL-SIZE number of arguments
+to-report assign-baf [ubaf-edges expl goal-size]
+  let legal-edges (filter [edge -> last (first edge) = expl] ubaf-edges)
+  let baf-edges []
+  let baf-args (lput expl [])
+  let baf-args-size 1
+  while [(not empty? legal-edges) and (baf-args-size < goal-size)] [
+    let new-edge one-of legal-edges 
+    set legal-edges (remove new-edge legal-edges)
+    set baf-edges (lput new-edge baf-edges)
+    
+    if not member? (first (first new-edge)) baf-args [
+      set baf-args (lput (first (first new-edge)) baf-args)
+      set baf-args-size (baf-args-size + 1)
+      let new-legal-edges (filter [edg -> last (first edg) = first (first new-edge)] ubaf-edges)
+      set legal-edges (sentence legal-edges new-legal-edges)
+    ]
+  ]
+  let attk-edges map [x -> first x] (filter [x -> last x = true] baf-edges)
+  let supp-edges map [x -> first x] (filter [x -> last x = false] baf-edges)
+  report (list baf-args attk-edges supp-edges)
+end
+
+;; splits UBAF-EDGES into two BAFs around the explanadum EXPL so that the BAFs 
+;; do not share any edges, with the first BAF having size GOAL-SIZE
+to-report split-ubaf [ubaf-edges expl goal-size]
+  let baf1 assign-baf ubaf-edges expl goal-size
+  let baf1-attks item 1 baf1
+  let baf1-supps item 2 baf1
+  let baf2-attks map [x -> first x] (filter [x -> last x = true] ubaf-edges)
+  let baf2-supps map [x -> first x] (filter [x -> last x = false] ubaf-edges)
+  set baf2-attks filter [x -> not member? x baf1-attks] baf2-attks
+  set baf2-supps filter [x -> not member? x baf1-supps] baf2-supps
+  let baf2-args remove-duplicates reduce sentence (sentence baf2-attks baf2-supps)
+  report list baf1 (list baf2-args baf2-attks baf2-supps)
+end
+
+;; generates BAFS-NO number of BAFs around the explanandum EXPL by constructing
+;; a UBAF-NARY universal BAF with size UBAF-SIZE
+to-report generate-random-bafs [ubaf-size ubaf-nary bafs-no expl]
+  let ubaf gen-ubaf ubaf-size ubaf-nary expl
+  set ubaf classify-edges ubaf 0.5
+  ;let bafs split-ubaf ubaf expl (floor (ubaf-size * 0.5))
+  let bafs map [x -> assign-baf ubaf expl (floor (ubaf-size * 0.5))] (range bafs-no)
+  report bafs
+end
